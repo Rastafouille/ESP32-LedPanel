@@ -25,8 +25,12 @@ pour le cablage :
 <img src="IMG/ESP32P5RGBInstallation.png" width="500"/>
 
 Voil1 ce que ca peut donner, a vous de modifier !
+
 <img src="IMG/1.png" width="500"/>
+
 <img src="IMG/2.png" width="500"/>
+
 <img src="IMG/3.png" width="500"/>
+
 <img src="IMG/4.png" width="500"/>
 
