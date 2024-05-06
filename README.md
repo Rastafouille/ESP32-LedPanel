@@ -20,11 +20,12 @@ Il va falloir
  - des panneaux led P5
 <https://fr.aliexpress.com/item/32760855293.html>
  
-pour le cablage :
+Pour le cablage :
 
 <img src="IMG/ESP32P5RGBInstallation.png" width="500"/>
 
-Voil1 ce que ca peut donner, a vous de modifier !
+Voila ce que ca peut donner, à vous de modifier !
+Pensez à modifier credentials.h avec vos token, ssid et password.
 
 <img src="IMG/1.png" width="500"/>
 
@@ -34,3 +35,7 @@ Voil1 ce que ca peut donner, a vous de modifier !
 
 <img src="IMG/4.png" width="500"/>
 
+sources:
+
+<https://www.youtube.com/watch?v=KuOBKi-yVoc&t=408s>
+<https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA/blob/master/examples/BitmapIcons/BitmapIcons.ino>
