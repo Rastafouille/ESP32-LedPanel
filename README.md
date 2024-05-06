@@ -1,16 +1,16 @@
 # ESP32 LED PANEL
 
-Panneaux d'affichage connecté parmettant la récupération et l'affichage déroulant de données custom comme par exemple :
+Panneaux d'affichage connecté permettant la récupération et l'affichage déroulant de données custom comme par exemple :
 
-- cours de cryptomonnaies (API <livecoinwatch.com>)
+- cours de cryptomonnaies (API www.livecoinwatch.com)
 
 - heure sur differents fuseaux
 
-- production panneaux solaire et consommation électrique de la maison (API <www.solaxcloud.com> dans mon cas
+- production panneaux solaires et consommation électrique de la maison (API www.solaxcloud.com dans mon cas
 
-- couleur EDF Tempo (API <particulier.edf.fr>)
+- couleur EDF Tempo (API www.particulier.edf.fr)
 
-- Prévision météo (API <openweathermap.org>)
+- Prévision météo (API www.openweathermap.org)
 
 Il va falloir 
 
@@ -25,6 +25,7 @@ Pour le cablage :
 <img src="IMG/ESP32P5RGBInstallation.png" width="500"/>
 
 Voila ce que ca peut donner, à vous de modifier !
+
 Pensez à modifier credentials.h avec vos token, ssid et password.
 
 <img src="IMG/1.png" width="500"/>
