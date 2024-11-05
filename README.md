@@ -8,7 +8,7 @@ Panneaux d'affichage connecté permettant la récupération et l'affichage déro
 
 - production panneaux solaires et consommation électrique de la maison (API www.solaxcloud.com dans mon cas
 
-- couleur EDF Tempo (API www.particulier.edf.fr)
+- couleur EDF Tempo (API https://www.api-couleur-tempo.fr)
 
 - Prévision météo (API www.openweathermap.org)
 

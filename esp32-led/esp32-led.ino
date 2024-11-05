@@ -189,7 +189,7 @@ void loop()
   if (count==20)
   {
     count=0;
-    //updateTempo();
+    updateTempoV2();
     updateWeather();
     if (ErrCom>=10)
     {  Connecting_To_The_Network(); ErrCom=0;
@@ -211,8 +211,8 @@ void loop()
   configTzTime("JST-9", ntpServer);
   updateTime();
   printTime("Tokyo");
-
-  //printTempo();
+  
+  printTempo();
 
   updateSolar();
   printSolar();
@@ -387,37 +387,67 @@ void printTime(String text)
   return;
 }
 
-void updateTempo()
+void updateTempoV2()
 { 
   // recup du jour de l'année format AAAA/MM/JJ
-  configTzTime("CET-1CEST-2,M3.5.0/02:00:00,M10.5.0/03:00:00", ntpServer);
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {Serial.println("Erreur de recup de l'heure");  }
-  char strftime_buf[20];
-  strftime(strftime_buf, sizeof(strftime_buf), "%Y-%m-%d", &timeinfo);
+  //configTzTime("CET-1CEST-2,M3.5.0/02:00:00,M10.5.0/03:00:00", ntpServer);
+  //struct tm timeinfo;
+  //if (!getLocalTime(&timeinfo)) {Serial.println("Erreur de recup de l'heure");  }
+  //char strftime_buf[20];
+  //strftime(strftime_buf, sizeof(strftime_buf), "%Y-%m-%d", &timeinfo);
   //Serial.println(strftime_buf); // debug date du jour
   // Construire l'URL avec la date formatée
-  String tempourl = "https://particulier.edf.fr/services/rest/referentiel/searchTempoStore?dateRelevant=" + String(strftime_buf);
-  //Serial.println(tempourl); // debug url
+  String urlToDay = "https://www.api-couleur-tempo.fr/api/jourTempo/today";
+  //Serial.println(urlToDay); // debug url
+  String urlTomorrow = "https://www.api-couleur-tempo.fr/api/jourTempo/tomorrow";
+  //Serial.println(urlTomorrow); // debug url
   // Effectuer la requête HTTP
+
   HTTPClient http;
-  http.begin(tempourl);
+  http.begin(urlToDay);
   int httpCodeTempo = http.GET();
   if (httpCodeTempo > 0) {
     if (httpCodeTempo == HTTP_CODE_OK) {
       String payload = http.getString();
-      // Parse JSON avec ArduinoJSON
-      //const size_t capacity = JSON_OBJECT_SIZE(2) + 100;
-      //DynamicJsonDocument doc(capacity);
-      deserializeJson(tempodoc, payload);
-      // Extraire les valeurs
-      couleurJourJ = tempodoc["couleurJourJ"].as<String>();
-      couleurJourJ1 = tempodoc["couleurJourJ1"].as<String>();
-      // DEBUG
-      Serial.print("CouleurJourJ: ");
-      Serial.println(couleurJourJ);
-      Serial.print("CouleurJourJ1: ");
-      Serial.println(couleurJourJ1);
+      Serial.print("payloadDe = ");Serial.println(payload);
+
+       // Parse JSON avec ArduinoJSON
+        const size_t capacity = JSON_OBJECT_SIZE(3) + 100;
+        DynamicJsonDocument doc(capacity);
+        DeserializationError error = deserializeJson(doc, payload);
+ 
+        if (error) {
+          Serial.print("deserializeJson() failed: ");
+          Serial.println(error.c_str());
+          return;
+        }
+ 
+        // Extraire les valeurs
+        int codeJour = doc["codeJour"];
+        Serial.print("codeJour = ");Serial.println(codeJour);
+ 
+        // Afficher la couleur en fonction du code
+        //Code couleur du tarif Tempo applicable: 
+        // - 0: tarif inconnu (pas encore communiqué par RTE) 
+        // - 1: tarif bleu 
+        // - 2: tarif blanc 
+        // - 3: tarif rouge
+        switch(codeJour) {
+          case 0:
+            couleurJourJ = "INCONNU";
+            break;
+          case 1:
+            couleurJourJ = "BLEU";
+            break;
+          case 2:
+            couleurJourJ = "BLANC";
+            break;
+          case 3:
+            couleurJourJ = "ROUGE";
+            break;
+          default:
+            couleurJourJ = "INCONNU";
+        }
     } // fin if (httpCode == HTTP_CODE_OK) {
   } else {
     Serial.println("TEMPO - Erreur de connexion au serveur EDF");
@@ -425,6 +455,58 @@ void updateTempo()
   } //if (httpCode > 0) {
   http.end();
 
+
+  http.begin(urlTomorrow);
+  int httpCodeDemain = http.GET();
+    if (httpCodeDemain > 0) {
+      if (httpCodeDemain == HTTP_CODE_OK) {
+        String payload = http.getString();
+                Serial.print("payloadDemain = ");Serial.println(payload);
+
+ 
+        // Parse JSON avec ArduinoJSON
+        const size_t capacity = JSON_OBJECT_SIZE(3) + 100;
+        DynamicJsonDocument doc(capacity);
+        DeserializationError error = deserializeJson(doc, payload);
+ 
+        if (error) {
+          Serial.print("deserializeJson() failed: ");
+          Serial.println(error.c_str());
+          return;
+        }
+ 
+        // Extraire les valeurs
+        int codeJour = doc["codeJour"];
+        Serial.print("codeDemain = ");Serial.println(codeJour);
+
+        switch(codeJour) {
+          case 0:
+            couleurJourJ1 = "INCONNU";
+            break;
+          case 1:
+            couleurJourJ1 = "BLEU";
+            break;
+          case 2:
+            couleurJourJ1 = "BLANC";
+            break;
+          case 3:
+            couleurJourJ1 = "ROUGE";
+            break;
+          default:
+            couleurJourJ1 = "INCONNU";
+        }
+      }
+    } else {
+      Serial.println("TEMPO - Erreur de connexion au serveur EDF");
+      ErrCom++;Serial.print("ErrCom = ");Serial.println(ErrCom);   
+     }
+    http.end(); // Libérer les ressources
+
+      // DEBUG
+      Serial.print("CouleurJourJ: ");
+      Serial.println(couleurJourJ);
+      Serial.print("CouleurJourJ1: ");
+      Serial.println(couleurJourJ1);
 }
 
 void printTempo()
@@ -436,30 +518,30 @@ void printTempo()
   dma_display->print("EDF Tempo");
   
       Serial.print("CouleurJourJ: ");
-      if (couleurJourJ=="TEMPO_BLEU") {
+      if (couleurJourJ=="BLEU") {
         Serial.println("bleu");
         scroll_text(12, frameDelay, "HOY", 2, myBLUE);
       }
-      if (couleurJourJ=="TEMPO_BLANC") {
+      if (couleurJourJ=="BLANC") {
         Serial.println("blanc");
         scroll_text(12, frameDelay, "HOY", 2, myWHITE);
       }
-      if (couleurJourJ=="TEMPO_ROUGE") {
+      if (couleurJourJ=="ROUGE") {
         Serial.println("rouge");
         scroll_text(12, frameDelay, "HOY", 2, myRED);
       }
  
       // Affichage des LEDs du lendemain
       Serial.print("CouleurJourJ1: ");
-      if (couleurJourJ1=="TEMPO_BLEU") {
+      if (couleurJourJ1=="BLEU") {
         Serial.println("bleu");
         scroll_text(12, frameDelay, "MANANA", 2, myBLUE);
       }
-      if (couleurJourJ1=="TEMPO_BLANC") {
+      if (couleurJourJ1=="BLANC") {
         Serial.println("blanc");
         scroll_text(12, frameDelay, "MANANA", 2, myWHITE);
       }
-      if (couleurJourJ1=="TEMPO_ROUGE") {
+      if (couleurJourJ1=="ROUGE") {
         Serial.println("rouge");
         scroll_text(12, frameDelay, "MANANA", 2, myRED);
       }
