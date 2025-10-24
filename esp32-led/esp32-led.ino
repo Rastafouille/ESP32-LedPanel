@@ -7,6 +7,9 @@
 #include <ArduinoJson.h>
 #include "Dhole_weather_icons32px.h"
 #include "credentials.h"
+#include <WiFiManager.h>
+#include <ArduinoOTA.h>
+
 
 
 
@@ -157,7 +160,7 @@ void setup() {
   mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M;  // I2S clock speed, better leave as-is unless you want to experiment.
   delay(10);
 
-  //----------------------------------------Display Setup.
+  //---------------------------Display Setup.
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
   dma_display->setBrightness8(15); //--> 0-255.
@@ -165,6 +168,32 @@ void setup() {
 
   Connecting_To_The_Network();
   delay(100);
+
+  // OTA
+  ArduinoOTA
+    .onStart([]() {
+      Serial.println("Start OTA");
+      dma_display->clearScreen();
+      dma_display->setTextColor(myORANGE);
+      dma_display->setCursor(0, 0);
+      dma_display->print("OTA Start...");
+    })
+    .onEnd([]() {
+      Serial.println("\nEnd OTA");
+    })
+    .onProgress([](unsigned int progress, unsigned int total) {
+      Serial.printf("OTA Progress: %u%%\r", (progress / (total / 100)));
+      dma_display->fillRect(0, 10, 128, 32, myBLACK);
+      dma_display->setCursor(0, 16);
+      dma_display->print(String(progress / (total / 100)) + "%");
+    })
+    .onError([](ota_error_t error) {
+      Serial.printf("Error[%u]: ", error);
+    });
+  ArduinoOTA.begin();
+
+
+
 
   // On configure le seveur NTP
   configTzTime("CET-1CEST-2,M3.5.0/02:00:00,M10.5.0/03:00:00", ntpServer);
@@ -186,14 +215,16 @@ void setup() {
 
 void loop()
  {
+  ArduinoOTA.handle();
   if (count==20)
   {
     count=0;
     updateTempoV2();
     updateWeather();
+    updateSolar();
+
     if (ErrCom>=10)
-    {  Connecting_To_The_Network(); ErrCom=0;
-}
+    {  ESP.restart(); }
 
   }
 
@@ -214,7 +245,6 @@ void loop()
   
   printTempo();
 
-  updateSolar();
   printSolar();
 
   printWeather();
@@ -224,30 +254,22 @@ void loop()
 
 void Connecting_To_The_Network() {
 
-  //scroll_text(22, frameDelay/2, "Connecting...",1,myORANGE);
+  WiFi.mode(WIFI_STA);
+  WiFiManager wm;
+  bool res = wm.autoConnect("Solar-ConfigAP");
+
+  if(!res) {
+    Serial.println("Impossible de se connecter");
+    ESP.restart();
+  }
+
+  Serial.println("WiFi connected.");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  // Affichage graphique existant inchangé :
   dma_display->clearScreen();
   dma_display->setTextWrap(false);
-  dma_display->setTextSize(1);
-  dma_display->setCursor(1,12);
-  dma_display->setTextColor(myORANGE);
-  dma_display->print("Connecting");
-  drawXbm565(64,0,64,32, wifi_image1bit, myORANGE);
-
-  Serial.println();
-  Serial.print("Connecting to : ");
-  WiFi.mode(WIFI_STA);
-  Serial.println(ssid);
-  
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-
-  }
-  Serial.println("WiFi connected.");
-  Serial.print("IP address : ");
-  Serial.println(WiFi.localIP());
-  //scroll_text(22, frameDelay/2, "Connected !!",1,myGREEN);
-  dma_display->clearScreen();
   dma_display->setTextSize(1);
   dma_display->setCursor(1,7);
   dma_display->setTextColor(myGREEN);
@@ -255,8 +277,6 @@ void Connecting_To_The_Network() {
   dma_display->setCursor(1,16);
   dma_display->print(WiFi.localIP());
   drawXbm565(64,0,64,32, wifi_image1bit, myGREEN);
-
-
 }
 
 
@@ -632,7 +652,7 @@ void printWeather()
       }
 }
 
-void updateSolar()
+void updateSolarv0()
 {
 HTTPClient http;
  http.begin(solarurl);
@@ -661,6 +681,60 @@ HTTPClient http;
   http.end();
   return ;
 }
+
+void updateSolar() {
+  HTTPClient http;
+
+  // Création du JSON à envoyer
+  StaticJsonDocument<200> requestDoc;
+  requestDoc["wifiSn"] = wifiSn;
+
+  String requestBody;
+  serializeJson(requestDoc, requestBody);
+
+  http.begin(serverName);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("tokenId", tokenId);
+
+  int httpCodeSolar = http.POST(requestBody);
+
+  if (httpCodeSolar > 0) {
+    if (httpCodeSolar == HTTP_CODE_OK) {
+      String Solarpayload = http.getString();
+
+      // DEBUG JSON brut :
+      Serial.println(Solarpayload);
+
+      // Parsing du JSON
+      StaticJsonDocument<1024> Solardoc;
+      DeserializationError error = deserializeJson(Solardoc, Solarpayload);
+
+      if (!error) {
+        // Attention aux null éventuels
+        int power = Solardoc["result"]["acpower"] | 0;
+        int conso = Solardoc["result"]["feedinpower"] | 0;
+
+        Serial.print("power: ");
+        Serial.println(power);
+        Serial.print("conso: ");
+        Serial.println(conso);
+      } else {
+        Serial.print("Erreur parsing JSON: ");
+        Serial.println(error.c_str());
+      }
+
+    } else {
+      Serial.printf("HTTP code inattendu : %d\n", httpCodeSolar);
+    }
+  } else {
+    Serial.println("Erreur de connexion au serveur Solax");
+  }
+
+  http.end();
+}
+
+
+
 
 void printSolar()
 {
