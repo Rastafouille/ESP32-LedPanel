@@ -43,16 +43,7 @@
 // Initialize dma_displayPanel_I2S_DMA as "dma_display".
 MatrixPanel_I2S_DMA *dma_display = nullptr;
 
-//----------------------------------------Variable for color.
-// color565(0, 0, 0); --> RGB color code. Use the "color picker" to use or find another color code.
-uint16_t myBLACK = dma_display->color565(0, 0, 0);
-uint16_t myWHITE = dma_display->color565(255, 255, 255);
-uint16_t myRED = dma_display->color565(255, 51, 51);
-uint16_t myGREEN = dma_display->color565(115, 230, 0);
-uint16_t myBLUE = dma_display->color565(51, 51, 255);
-uint16_t myORANGE = dma_display->color565(255, 153, 51);
-uint16_t myYELLOW = dma_display->color565(255, 209, 26);
-uint16_t myGRAY = dma_display->color565(179, 179, 179);
+uint16_t myBLACK, myWHITE, myRED, myGREEN, myBLUE, myORANGE, myYELLOW, myGRAY;
 
 uint16_t colortest;
 //----------------------------------------
@@ -166,32 +157,17 @@ void setup() {
   dma_display->setBrightness8(15); //--> 0-255.
   dma_display->clearScreen();
 
+  myBLACK  = dma_display->color565(0, 0, 0);
+  myWHITE  = dma_display->color565(255, 255, 255);
+  myRED    = dma_display->color565(255, 51, 51);
+  myGREEN  = dma_display->color565(115, 230, 0);
+  myBLUE   = dma_display->color565(51, 51, 255);
+  myORANGE = dma_display->color565(255, 153, 51);
+  myYELLOW = dma_display->color565(255, 209, 26);
+  myGRAY   = dma_display->color565(179, 179, 179);
+
   Connecting_To_The_Network();
   delay(100);
-
-  // OTA
-  ArduinoOTA
-    .onStart([]() {
-      Serial.println("Start OTA");
-      dma_display->clearScreen();
-      dma_display->setTextColor(myORANGE);
-      dma_display->setCursor(0, 0);
-      dma_display->print("OTA Start...");
-    })
-    .onEnd([]() {
-      Serial.println("\nEnd OTA");
-    })
-    .onProgress([](unsigned int progress, unsigned int total) {
-      Serial.printf("OTA Progress: %u%%\r", (progress / (total / 100)));
-      dma_display->fillRect(0, 10, 128, 32, myBLACK);
-      dma_display->setCursor(0, 16);
-      dma_display->print(String(progress / (total / 100)) + "%");
-    })
-    .onError([](ota_error_t error) {
-      Serial.printf("Error[%u]: ", error);
-    });
-  ArduinoOTA.begin();
-
 
 
 
@@ -215,7 +191,15 @@ void setup() {
 
 void loop()
  {
-  ArduinoOTA.handle();
+  if (WiFi.status() != WL_CONNECTED) {
+    static uint32_t lastRetry = 0;
+    if (millis() - lastRetry > 15000) {
+      lastRetry = millis();
+      Serial.println("WiFi perdu, tentative de reconnexion...");
+      WiFi.reconnect();
+    }
+  }
+
   if (count==20)
   {
     count=0;
@@ -253,21 +237,53 @@ void loop()
 }
 
 void Connecting_To_The_Network() {
+  dma_display->clearScreen();
+  dma_display->setTextWrap(false);
+  dma_display->setTextSize(1);
+  dma_display->setCursor(1, 7);
+  dma_display->setTextColor(myORANGE);
+  dma_display->print("Connecting...");
 
   WiFi.mode(WIFI_STA);
-  WiFiManager wm;
-  bool res = wm.autoConnect("Solar-ConfigAP");
+  WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(false);
 
-  if(!res) {
-    Serial.println("Impossible de se connecter");
-    ESP.restart();
+  Serial.println("Tentative de connexion a : " + String(ssid));
+  WiFi.begin(ssid, password);
+
+  uint32_t start = millis();
+  uint8_t dots = 0;
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 30000) {
+    delay(500);
+    Serial.print(".");
+    dots = (dots + 1) % 4;
+    dma_display->fillRect(1, 18, 120, 10, myBLACK);
+    dma_display->setCursor(1, 18);
+    dma_display->setTextColor(myWHITE);
+    dma_display->print("Please wait");
+    for (uint8_t i = 0; i < dots; i++) {
+      dma_display->print(".");
+    }
+  }
+  Serial.println();
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Echec WiFi direct, ouverture portail WiFiManager...");
+    WiFiManager wm;
+    wm.setConnectTimeout(30);
+    wm.setConfigPortalTimeout(180);
+    bool res = wm.autoConnect("Solar-ConfigAP");
+    if (!res) {
+      Serial.println("WiFiManager: aucune connexion et timeout portail.");
+      return;
+    }
   }
 
   Serial.println("WiFi connected.");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  // Affichage graphique existant inchangé :
   dma_display->clearScreen();
   dma_display->setTextWrap(false);
   dma_display->setTextSize(1);
@@ -601,56 +617,96 @@ void updateWeather()
 
 void printWeather()
 {
-    Serial.println("printWeather");
+  Serial.println("printWeather");
 
-  for (JsonObject list_item  : weatherdoc["list"].as<JsonArray>()) 
-      {
-        JsonObject list_item_main = list_item["main"];
-        int list_item_main_temp = list_item_main["temp"]; // 12.82, 10.4, 8.82, 10.93
-        String list_item_main_humidity = list_item_main["humidity"]; // 91, 90, 86, 77
+  //-------------------- JOUR 0 = AUJOURD'HUI --------------------
+  JsonObject day0 = weatherdoc["daily"][0];
+  float tempMin0 = day0["temp"]["min"].as<float>();
+  float tempMax0 = day0["temp"]["max"].as<float>();
+  float windDay0 = day0["wind_speed"].as<float>() * 1.852;
+  const char* iconDay0 = day0["weather"][0]["icon"];
 
-        JsonObject list_item_weather_0 = list_item ["weather"][0];
-        String list_item_weather_0_main = list_item_weather_0["main"];
-        String list_item_weather_0_description = list_item_weather_0["description"]; // "overcast clouds", ...
-        String list_item_weather_0_icon = list_item_weather_0["icon"];
+  dma_display->clearScreen();
+  dma_display->setTextSize(1);
+  dma_display->setTextColor(myWHITE);
+  dma_display->setCursor(0, 0);
+  dma_display->print("Aujourd'hui");
+  dma_display->setCursor(0, 12);
+  dma_display->print(String(tempMin0, 0) + "/" + String(tempMax0, 0) + " C");
+  dma_display->setCursor(0, 22);
+  dma_display->print(String(windDay0, 0) + " km/h");
 
-        JsonObject list_item_wind = list_item["wind"];
-        float list_item_wind_speed = list_item_wind["speed"]; // 4.01, 3.33, 1.4, 4.3
-        list_item_wind_speed = 1.852*list_item_wind_speed;
+  String s0(iconDay0);
+  if (s0.startsWith("01")) drawXbm565(90,0,32,32, sun_bits, myYELLOW);
+  if (s0.startsWith("02")) drawXbm565(90,3,32,32, cloud_sun_bits, myORANGE);
+  if (s0.startsWith("03")) drawXbm565(90,-4,32,32, cloud_bits, myGRAY);
+  if (s0.startsWith("04")) drawXbm565(90,0,32,32, clouds_bits, myGRAY);
+  if (s0.startsWith("09")) drawXbm565(90,-4,32,32, rain2_bits, myBLUE);
+  if (s0.startsWith("10")) drawXbm565(90,-4,32,32, rain1_bits, myBLUE);
+  if (s0.startsWith("11")) drawXbm565(90,-4,32,32, rain_lightning_bits, myBLUE);
+  if (s0.startsWith("13")) drawXbm565(90,0,32,32, snow_bits, myBLUE);
+  if (s0.startsWith("50")) drawXbm565(90,0,32,32, clouds_bits, myGRAY);
 
-        int list_item_wind_deg = list_item_wind["deg"]; // 151, 170, 224, 315
-        String list_item_wind_gust = list_item_wind["gust"]; // 6.19, 5.34, 2.69, 6.92
+delay(3000);
 
-        String list_item_dt_txt = list_item["dt_txt"]; // "2024-05-02 00:00:00", "2024-05-02 03:00:00", ...
 
-      dma_display->clearScreen();
-      dma_display->setTextSize(1);
-      dma_display->setTextColor(myWHITE);
-      dma_display->setCursor(1, 1);
-      dma_display->print(list_item_dt_txt.substring(0,13)+"h");
-      //dma_display->setCursor(5, 8);
-      //dma_display->print(list_item_weather_0_description);
-      dma_display->setCursor(3, 11);
-      dma_display->print(String(list_item_wind_speed,0)+" km/h");
-      dma_display->setCursor(8, 21);
-      dma_display->print(String(list_item_main_temp)+" deg" );
-      
-      if (list_item_wind_speed>50){drawXbm565(90,0,32,32, wind_bits, myBLUE);}
-      else 
-      {
-        if (list_item_weather_0_icon.substring(0,2)=="01"){drawXbm565(90,0,32,32, sun_bits, myYELLOW);} //myString.substring(from inclus, to exclu) indice commence a 0
-        if (list_item_weather_0_icon.substring(0,2)=="02"){drawXbm565(90,3,32,32, cloud_sun_bits, myORANGE);}
-        if (list_item_weather_0_icon.substring(0,2)=="03"){drawXbm565(90,-4,32,32, cloud_bits, myGRAY);}
-        if (list_item_weather_0_icon.substring(0,2)=="04"){drawXbm565(90,0,32,32, clouds_bits, myGRAY);}
-        if (list_item_weather_0_icon.substring(0,2)=="09"){drawXbm565(90,-4,32,32, rain2_bits, myBLUE);}
-        if (list_item_weather_0_icon.substring(0,2)=="10"){drawXbm565(90,-4,32,32, rain1_bits, myBLUE);}
-        if (list_item_weather_0_icon.substring(0,2)=="11"){drawXbm565(90,-4,32,32, rain_lightning_bits, myBLUE);}
-        if (list_item_weather_0_icon.substring(0,2)=="13"){drawXbm565(90,0,32,32, snow_bits, myBLUE);}
-        if (list_item_weather_0_icon.substring(0,2)=="50"){drawXbm565(90,0,32,32, clouds_bits, myGRAY);}
-      }
-        delay(2000);
-      }
-}
+  //-------------------- JOUR 1 = DEMAIN --------------------
+  JsonObject day1 = weatherdoc["daily"][1];
+  float tempMin1 = day1["temp"]["min"].as<float>();
+  float tempMax1 = day1["temp"]["max"].as<float>();
+  float windDay1 = day1["wind_speed"].as<float>() * 1.852;
+  const char* iconDay1 = day1["weather"][0]["icon"];
+
+  dma_display->clearScreen();
+  dma_display->setCursor(0, 0);
+  dma_display->print("Demain");
+  dma_display->setCursor(0, 12);
+  dma_display->print(String(tempMin1, 0) + "/" + String(tempMax1, 0) + " C");
+  dma_display->setCursor(0, 22);
+  dma_display->print(String(windDay1, 0) + " km/h");
+
+  String s1(iconDay1);
+  if (s1.startsWith("01")) drawXbm565(90,0,32,32, sun_bits, myYELLOW);
+  if (s1.startsWith("02")) drawXbm565(90,3,32,32, cloud_sun_bits, myORANGE);
+  if (s1.startsWith("03")) drawXbm565(90,-4,32,32, cloud_bits, myGRAY);
+  if (s1.startsWith("04")) drawXbm565(90,0,32,32, clouds_bits, myGRAY);
+  if (s1.startsWith("09")) drawXbm565(90,-4,32,32, rain2_bits, myBLUE);
+  if (s1.startsWith("10")) drawXbm565(90,-4,32,32, rain1_bits, myBLUE);
+  if (s1.startsWith("11")) drawXbm565(90,-4,32,32, rain_lightning_bits, myBLUE);
+  if (s1.startsWith("13")) drawXbm565(90,0,32,32, snow_bits, myBLUE);
+  if (s1.startsWith("50")) drawXbm565(90,0,32,32, clouds_bits, myGRAY);
+
+delay(3000);
+
+
+  //-------------------- JOUR 2 = APRES-DEMAIN --------------------
+  JsonObject day2 = weatherdoc["daily"][2];
+  float tempMin2 = day2["temp"]["min"].as<float>();
+  float tempMax2 = day2["temp"]["max"].as<float>();
+  float windDay2 = day2["wind_speed"].as<float>() * 1.852;
+  const char* iconDay2 = day2["weather"][0]["icon"];
+
+  dma_display->clearScreen();
+  dma_display->setCursor(0, 0);
+  dma_display->print("Apres-demain");
+  dma_display->setCursor(0, 12);
+  dma_display->print(String(tempMin2, 0) + "/" + String(tempMax2, 0) + " C");
+  dma_display->setCursor(0, 22);
+  dma_display->print(String(windDay2, 0) + " km/h");
+
+  String s2(iconDay2);
+  if (s2.startsWith("01")) drawXbm565(90,0,32,32, sun_bits, myYELLOW);
+  if (s2.startsWith("02")) drawXbm565(90,3,32,32, cloud_sun_bits, myORANGE);
+  if (s2.startsWith("03")) drawXbm565(90,-4,32,32, cloud_bits, myGRAY);
+  if (s2.startsWith("04")) drawXbm565(90,0,32,32, clouds_bits, myGRAY);
+  if (s2.startsWith("09")) drawXbm565(90,-4,32,32, rain2_bits, myBLUE);
+  if (s2.startsWith("10")) drawXbm565(90,-4,32,32, rain1_bits, myBLUE);
+  if (s2.startsWith("11")) drawXbm565(90,-4,32,32, rain_lightning_bits, myBLUE);
+  if (s2.startsWith("13")) drawXbm565(90,0,32,32, snow_bits, myBLUE);
+  if (s2.startsWith("50")) drawXbm565(90,0,32,32, clouds_bits, myGRAY);
+
+delay(3000);}
+
 
 void updateSolarv0()
 {
@@ -752,4 +808,3 @@ void printSolar()
       dma_display->print("Conso maison");
       scroll_text(12, frameDelay,String(conso)+" W", 2, myRED);
 }
-
