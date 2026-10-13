@@ -8,9 +8,9 @@ const char* coinapiKey = "YOUR_livecoinwath_API";
 
 const char* weatherurl = "https://api.openweathermap.org/data/3.0/onecall?lat=43.956&lon=4.779&exclude=hourly&appid=YOUR_API&units=metric";//&lang=fr";
 
-const char* solarurl = "https://www.solaxcloud.com/proxyApp/proxy/api/getRealtimeInfo.do?tokenId=YOUR_TOKEN&sn=YOUR_SN";
+// Endpoint du projet qui centralise les données de la maison.
+// Exemple : http://192.168.1.168:8787/api/homestatus
+const char* homeStatusUrl = "http://192.168.1.168:8787/api/homestatus";
 
-
-  const char* serverName = "https://global.solaxcloud.com/api/v2/dataAccess/realtimeInfo/get";
-  const char* tokenId = "tokenId";
-  const char* wifiSn = "wifiSn";
+// Nom de l'ESP32 affiché dans le réseau lors du téléversement OTA.
+const char* otaHostname = "esp32-led-panel";

@@ -6,7 +6,7 @@ Panneaux d'affichage connecté permettant la récupération et l'affichage déro
 
 - heure sur differents fuseaux
 
-- production panneaux solaires et consommation électrique de la maison (API www.solaxcloud.com dans mon cas
+- production solaire et consommation électrique de la maison (API locale `GET /api/homestatus`)
 
 - couleur EDF Tempo (API https://www.api-couleur-tempo.fr)
 
@@ -26,7 +26,18 @@ Pour le cablage :
 
 Voila ce que ca peut donner, à vous de modifier !
 
-Pensez à modifier credentials.h avec vos token, ssid et password.
+Pensez à modifier `credentials.h` avec votre SSID, mot de passe Wi-Fi et vos clés API météo/crypto.
+
+Les données solaires et de consommation sont récupérées depuis le service centralisé à
+`http://192.168.1.168:8787/api/homestatus`. Le panneau ne contacte plus directement
+Solax. Pour changer l’adresse, modifiez `homeStatusUrl` dans `credentials.h`.
+
+### Mise à jour sans fil (OTA)
+
+Après un premier téléversement par USB et une connexion au Wi-Fi, l'ESP32 annonce
+`esp32-led-panel` sur le réseau. Dans Arduino IDE, sélectionnez ce port réseau depuis
+le menu des ports, puis téléversez le programme comme d'habitude. L'ordinateur et
+l'ESP32 doivent être sur le même réseau local.
 
 <img src="IMG/1.png" width="500"/>
 

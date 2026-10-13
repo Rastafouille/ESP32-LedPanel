@@ -50,6 +50,19 @@ uint16_t colortest;
 
 int power=0;
 int conso=0;
+bool solarAvailable=false;
+bool houseAvailable=false;
+bool waterHeaterAvailable=false;
+bool gridAvailable=false;
+bool batteryAvailable=false;
+bool batteryAcAvailable=false;
+int waterHeaterPower=0;
+int gridNetExport=0;
+int batterySoc=0;
+int batteryAcCharge=0;
+int batteryAcDischarge=0;
+String waterHeaterMode="unavailable";
+bool otaStarted=false;
 int ErrCom=0;
 
 String couleurJourJ;
@@ -126,6 +139,22 @@ void drawXbm565(int x, int y, int width, int height, const char *xbm, uint16_t c
     }
 }
 
+void serviceOTA() {
+  if (WiFi.status() == WL_CONNECTED && !otaStarted) {
+    ArduinoOTA.setHostname(otaHostname);
+    ArduinoOTA.onStart([]() { Serial.println("Mise à jour OTA démarrée"); });
+    ArduinoOTA.onEnd([]() { Serial.println("Mise à jour OTA terminée"); });
+    ArduinoOTA.onError([](ota_error_t error) {
+      Serial.printf("Erreur OTA [%u]\n", error);
+    });
+    ArduinoOTA.begin();
+    otaStarted = true;
+    Serial.print("OTA prêt : ");
+    Serial.println(otaHostname);
+  }
+  if (otaStarted) ArduinoOTA.handle();
+}
+
 
 //________________________________________________________________________________VOID SETUP()
 void setup() {
@@ -169,6 +198,8 @@ void setup() {
   Connecting_To_The_Network();
   delay(100);
 
+  serviceOTA();
+
 
 
   // On configure le seveur NTP
@@ -191,6 +222,7 @@ void setup() {
 
 void loop()
  {
+  serviceOTA();
   if (WiFi.status() != WL_CONNECTED) {
     static uint32_t lastRetry = 0;
     if (millis() - lastRetry > 15000) {
@@ -303,6 +335,7 @@ void scroll_text(uint16_t ypos, unsigned long scroll_delay, String text, int siz
    int firstxpos=(128 - text_length*size*5.5)/2 ;
   for (int xpos = firstxpos; xpos > -(128 + text_length * size * 3.5); xpos--)
   {  
+    serviceOTA();
     dma_display->setTextSize(size);
     dma_display->setCursor(xpos, ypos);
     dma_display->fillRect(0, ypos, 128, 32, myBLACK);
@@ -374,6 +407,7 @@ void scrollCoin(unsigned long scroll_delay, String text1, String text2,uint16_t 
   int firstxpos=0;
   for (int xpos = firstxpos; xpos > -(10 + text_length * 12); xpos--)
   {  
+        serviceOTA();
         dma_display->clearScreen();
         dma_display->setTextSize(2);
         dma_display->setCursor(xpos, 3);
@@ -708,103 +742,118 @@ delay(3000);
 delay(3000);}
 
 
-void updateSolarv0()
-{
-HTTPClient http;
- http.begin(solarurl);
-  int httpCodeSolar = http.GET();
-  if (httpCodeSolar > 0) {
-    if (httpCodeSolar == HTTP_CODE_OK) {
-      String Solarpayload = http.getString();
-      // Parse JSON avec ArduinoJSON
-      const size_t Solarcapacity = JSON_OBJECT_SIZE(2) + 100;
-      DynamicJsonDocument Solardoc(Solarcapacity);
-      deserializeJson(Solardoc, Solarpayload);
-      // Extraire les valeurs
-      power = Solardoc["result"]["acpower"];
-      conso = Solardoc["result"]["feedinpower"];
-      // DEBUG
-      Serial.print("power: ");
-      Serial.println(power);
-      Serial.print("conso: ");
-      Serial.println(conso);
-
-    } // fin if (httpCode == HTTP_CODE_OK) {
-  } else {
-    Serial.println("Erreur de connexion au serveur Solax");
-    ErrCom++;Serial.print("ErrCom = ");Serial.println(ErrCom);
-  } //if (httpCode > 0) {
-  http.end();
-  return ;
-}
-
 void updateSolar() {
   HTTPClient http;
+  http.begin(homeStatusUrl);
+  const int httpCode = http.GET();
 
-  // Création du JSON à envoyer
-  StaticJsonDocument<200> requestDoc;
-  requestDoc["wifiSn"] = wifiSn;
-
-  String requestBody;
-  serializeJson(requestDoc, requestBody);
-
-  http.begin(serverName);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("tokenId", tokenId);
-
-  int httpCodeSolar = http.POST(requestBody);
-
-  if (httpCodeSolar > 0) {
-    if (httpCodeSolar == HTTP_CODE_OK) {
-      String Solarpayload = http.getString();
-
-      // DEBUG JSON brut :
-      Serial.println(Solarpayload);
-
-      // Parsing du JSON
-      StaticJsonDocument<1024> Solardoc;
-      DeserializationError error = deserializeJson(Solardoc, Solarpayload);
-
-      if (!error) {
-        // Attention aux null éventuels
-        int power = Solardoc["result"]["acpower"] | 0;
-        int conso = Solardoc["result"]["feedinpower"] | 0;
-
-        Serial.print("power: ");
-        Serial.println(power);
-        Serial.print("conso: ");
-        Serial.println(conso);
-      } else {
-        Serial.print("Erreur parsing JSON: ");
-        Serial.println(error.c_str());
-      }
-
+  if (httpCode == HTTP_CODE_OK) {
+    const String payload = http.getString();
+    StaticJsonDocument<4096> doc;
+    const DeserializationError error = deserializeJson(doc, payload);
+    if (error) {
+      Serial.print("HOMESTATUS - Erreur parsing JSON: ");
+      Serial.println(error.c_str());
+      ErrCom++;
     } else {
-      Serial.printf("HTTP code inattendu : %d\n", httpCodeSolar);
+      // /api/homestatus fournit explicitement disponibilité et mesures.
+      JsonObjectConst solar = doc["solar"].as<JsonObjectConst>();
+      JsonObjectConst house = doc["house"].as<JsonObjectConst>();
+      JsonObjectConst waterHeater = doc["waterHeater"].as<JsonObjectConst>();
+      JsonObjectConst grid = doc["grid"].as<JsonObjectConst>();
+      JsonObjectConst battery = doc["battery"].as<JsonObjectConst>();
+      solarAvailable = solar["available"] | false;
+      houseAvailable = house["available"] | false;
+      waterHeaterAvailable = waterHeater["available"] | false;
+      gridAvailable = grid["available"] | false;
+      batteryAvailable = battery["available"] | false;
+      batteryAcAvailable = batteryAvailable &&
+        !battery["acChargePowerW"].isNull() && !battery["acDischargePowerW"].isNull();
+      if (solarAvailable && !solar["powerW"].isNull()) {
+        power = solar["powerW"].as<int>();
+      } else solarAvailable = false;
+      if (houseAvailable && !house["powerIncludingWaterHeaterW"].isNull()) {
+        conso = house["powerIncludingWaterHeaterW"].as<int>();
+      } else {
+        houseAvailable = false;
+      }
+      if (waterHeaterAvailable && !waterHeater["powerW"].isNull()) {
+        waterHeaterPower = waterHeater["powerW"].as<int>();
+      } else waterHeaterAvailable = false;
+      waterHeaterMode = waterHeater["mode"] | "unavailable";
+      if (gridAvailable && !grid["netExportW"].isNull()) {
+        gridNetExport = grid["netExportW"].as<int>();
+      } else gridAvailable = false;
+      if (batteryAvailable && !battery["socPercent"].isNull()) {
+        batterySoc = battery["socPercent"].as<int>();
+      } else batteryAvailable = false;
+      if (batteryAcAvailable) {
+        batteryAcCharge = battery["acChargePowerW"].as<int>();
+        batteryAcDischarge = battery["acDischargePowerW"].as<int>();
+      }
+      Serial.println("Données reçues depuis /api/homestatus");
+      Serial.print("solar.powerW: ");
+      if (solarAvailable) Serial.println(power); else Serial.println("indisponible");
+      Serial.print("house.powerIncludingWaterHeaterW: ");
+      if (houseAvailable) Serial.println(conso); else Serial.println("indisponible");
     }
   } else {
-    Serial.println("Erreur de connexion au serveur Solax");
+    Serial.printf("HOMESTATUS - GET en échec (HTTP %d)\n", httpCode);
+    ErrCom++;
   }
-
   http.end();
 }
-
-
-
-
 void printSolar()
 {
-      dma_display->clearScreen();
-      dma_display->setTextSize(1);
-      dma_display->setTextColor(myWHITE);
-      dma_display->setCursor(1, 1);
-      dma_display->print("Production solaire");
-      scroll_text(12, frameDelay,String(power)+" W", 2, myGREEN);
+  // Pages courtes et colorées pour rendre l'instantané HomeSolarPilot lisible.
+  dma_display->clearScreen();
+  dma_display->setTextSize(1);
+  dma_display->setTextColor(myWHITE);
+  dma_display->setCursor(1, 1);
+  dma_display->print("PRODUCTION PV");
+  if (solarAvailable) scroll_text(12, frameDelay, String(power) + " W", 2, myGREEN);
+  else scroll_text(12, frameDelay, "Indisponible", 1, myORANGE);
 
-      dma_display->clearScreen();
-      dma_display->setTextSize(1);
-      dma_display->setTextColor(myWHITE);
-      dma_display->setCursor(1, 1);
-      dma_display->print("Conso maison");
-      scroll_text(12, frameDelay,String(conso)+" W", 2, myRED);
+  dma_display->clearScreen();
+  dma_display->setTextSize(1);
+  dma_display->setTextColor(myWHITE);
+  dma_display->setCursor(1, 1);
+  dma_display->print("MAISON + CE");
+  if (houseAvailable) scroll_text(12, frameDelay, String(conso) + " W", 2, myRED);
+  else scroll_text(12, frameDelay, "Indisponible", 1, myORANGE);
+
+  dma_display->clearScreen();
+  dma_display->setTextSize(1);
+  dma_display->setTextColor(myWHITE);
+  dma_display->setCursor(1, 1);
+  dma_display->print("CHAUFFE-EAU ");
+  dma_display->setTextColor(waterHeaterMode == "stopped" ? myGRAY : myORANGE);
+  dma_display->print(waterHeaterMode);
+  if (waterHeaterAvailable) scroll_text(12, frameDelay, String(waterHeaterPower) + " W", 2, myORANGE);
+  else scroll_text(12, frameDelay, "Indisponible", 1, myORANGE);
+
+  dma_display->clearScreen();
+  dma_display->setTextSize(1);
+  dma_display->setTextColor(myWHITE);
+  dma_display->setCursor(1, 1);
+  dma_display->print("RESEAU");
+  if (gridAvailable) {
+    const bool exporting = gridNetExport >= 0;
+    scroll_text(12, frameDelay,
+      String(exporting ? "Injection " : "Achat ") + String(abs(gridNetExport)) + " W",
+      1, exporting ? myGREEN : myRED);
+  } else scroll_text(12, frameDelay, "Indisponible", 1, myORANGE);
+
+  dma_display->clearScreen();
+  dma_display->setTextSize(1);
+  dma_display->setTextColor(myWHITE);
+  dma_display->setCursor(1, 1);
+  dma_display->print("BATTERIE");
+  if (batteryAvailable) {
+    String batteryText = String(batterySoc) + "%";
+    if (batteryAcAvailable) {
+      batteryText += "  +" + String(batteryAcDischarge) + " -" + String(batteryAcCharge) + "W";
+    }
+    scroll_text(12, frameDelay, batteryText, 1, myBLUE);
+  } else scroll_text(12, frameDelay, "Indisponible", 1, myORANGE);
 }
