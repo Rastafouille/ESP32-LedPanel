@@ -39,6 +39,9 @@ Après un premier téléversement par USB et une connexion au Wi-Fi, l'ESP32 ann
 le menu des ports, puis téléversez le programme comme d'habitude. L'ordinateur et
 l'ESP32 doivent être sur le même réseau local.
 
+Le mot de passe OTA est défini par `otaPassword` dans `credentials.h`. Gardez ce
+secret dans votre fichier local et ne le publiez pas dans le dépôt.
+
 <img src="IMG/1.png" width="500"/>
 
 <img src="IMG/2.png" width="500"/>

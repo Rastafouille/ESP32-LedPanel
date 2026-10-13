@@ -14,3 +14,5 @@ const char* homeStatusUrl = "http://192.168.1.168:8787/api/homestatus";
 
 // Nom de l'ESP32 affiché dans le réseau lors du téléversement OTA.
 const char* otaHostname = "esp32-led-panel";
+// Mot de passe demandé par l'IDE pour les téléversements OTA.
+const char* otaPassword = "CHANGE_ME_OTA_PASSWORD";

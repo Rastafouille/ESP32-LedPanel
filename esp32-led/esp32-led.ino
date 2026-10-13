@@ -40,6 +40,8 @@
 #define PANEL_CHAIN NUM_COLS*NUM_ROWS  //--> Total number of panels chained one to another
 //----------------------------------------
 
+#define OTA_PORT 3232
+
 // Initialize dma_displayPanel_I2S_DMA as "dma_display".
 MatrixPanel_I2S_DMA *dma_display = nullptr;
 
@@ -94,8 +96,8 @@ String str_h;String str_m;String str_s;
 String code1 = "BTC";
 String code2 = "ETH";
 String code3 = "BNB";
-String code4 = "POLS";
-String code5 = "ALPH";
+//String code4 = "POLS";
+//String code5 = "ALPH";
 
 
 //---------------------------------------- serveur NTP
@@ -142,10 +144,32 @@ void drawXbm565(int x, int y, int width, int height, const char *xbm, uint16_t c
 void serviceOTA() {
   if (WiFi.status() == WL_CONNECTED && !otaStarted) {
     ArduinoOTA.setHostname(otaHostname);
-    ArduinoOTA.onStart([]() { Serial.println("Mise à jour OTA démarrée"); });
-    ArduinoOTA.onEnd([]() { Serial.println("Mise à jour OTA terminée"); });
+    ArduinoOTA.setPort(OTA_PORT);
+    ArduinoOTA.setPassword(otaPassword);
+    ArduinoOTA.setRebootOnSuccess(true);
+    ArduinoOTA.onStart([]() {
+      Serial.println("Mise à jour OTA démarrée");
+      dma_display->clearScreen();
+      dma_display->setTextSize(1);
+      dma_display->setTextColor(myORANGE);
+      dma_display->setCursor(10, 12);
+      dma_display->print("MAJ WIFI...");
+    });
+    ArduinoOTA.onEnd([]() {
+      Serial.println("Mise à jour OTA terminée");
+      dma_display->clearScreen();
+      dma_display->setTextSize(1);
+      dma_display->setTextColor(myGREEN);
+      dma_display->setCursor(28, 12);
+      dma_display->print("MAJ OK");
+    });
     ArduinoOTA.onError([](ota_error_t error) {
       Serial.printf("Erreur OTA [%u]\n", error);
+      dma_display->clearScreen();
+      dma_display->setTextSize(1);
+      dma_display->setTextColor(myRED);
+      dma_display->setCursor(7, 12);
+      dma_display->print("ERREUR MAJ WIFI");
     });
     ArduinoOTA.begin();
     otaStarted = true;
@@ -355,7 +379,7 @@ HTTPClient http;
     http.addHeader("Content-Type", "application/json");
     http.addHeader("x-api-key", coinapiKey); 
     // Créer le corps de la requête
-    String coinjson = "{\"currency\": \"USD\",\"codes\": [\"" + code1 + "\", \"" + code2 + "\", \"" + code3 + "\", \"" + code4 + "\", \"" + code5 + "\"],\"sort\": \"rank\",\"order\": \"ascending\",\"offset\": 0,\"limit\": 0,\"meta\": false}";
+    String coinjson = "{\"currency\": \"USD\",\"codes\": [\"" + code1 + "\", \"" + code2 + "\", \"" + code3 + "\"],\"sort\": \"rank\",\"order\": \"ascending\",\"offset\": 0,\"limit\": 0,\"meta\": false}";
     // Envoyer la requête POST
     int httpCode = http.POST(coinjson);
     // Vérifier la réponse
@@ -803,57 +827,78 @@ void updateSolar() {
   }
   http.end();
 }
-void printSolar()
-{
-  // Pages courtes et colorées pour rendre l'instantané HomeSolarPilot lisible.
+void showInfoPage(const String& title, const String& value, const String& detail,
+                  uint16_t accent, uint8_t pageNumber, bool available) {
   dma_display->clearScreen();
-  dma_display->setTextSize(1);
-  dma_display->setTextColor(myWHITE);
-  dma_display->setCursor(1, 1);
-  dma_display->print("PRODUCTION PV");
-  if (solarAvailable) scroll_text(12, frameDelay, String(power) + " W", 2, myGREEN);
-  else scroll_text(12, frameDelay, "Indisponible", 1, myORANGE);
+  dma_display->fillRect(0, 0, 128, 2, accent);
 
-  dma_display->clearScreen();
   dma_display->setTextSize(1);
   dma_display->setTextColor(myWHITE);
-  dma_display->setCursor(1, 1);
-  dma_display->print("MAISON + CE");
-  if (houseAvailable) scroll_text(12, frameDelay, String(conso) + " W", 2, myRED);
-  else scroll_text(12, frameDelay, "Indisponible", 1, myORANGE);
+  dma_display->setCursor(4, 4);
+  dma_display->print(title);
+  dma_display->setTextColor(myGRAY);
+  dma_display->setCursor(100, 4);
+  dma_display->print(String(pageNumber) + "/5");
+  dma_display->drawFastHLine(4, 13, 120, dma_display->color565(55, 62, 72));
 
-  dma_display->clearScreen();
+  const String shownValue = available ? value : "DONNEE ABSENTE";
+  const int16_t valueWidth = shownValue.length() * 6;
   dma_display->setTextSize(1);
-  dma_display->setTextColor(myWHITE);
-  dma_display->setCursor(1, 1);
-  dma_display->print("CHAUFFE-EAU ");
-  dma_display->setTextColor(waterHeaterMode == "stopped" ? myGRAY : myORANGE);
-  dma_display->print(waterHeaterMode);
-  if (waterHeaterAvailable) scroll_text(12, frameDelay, String(waterHeaterPower) + " W", 2, myORANGE);
-  else scroll_text(12, frameDelay, "Indisponible", 1, myORANGE);
+  dma_display->setTextColor(available ? accent : myORANGE);
+  dma_display->setCursor(max(3, (128 - valueWidth) / 2), 14);
+  dma_display->print(shownValue);
 
-  dma_display->clearScreen();
-  dma_display->setTextSize(1);
-  dma_display->setTextColor(myWHITE);
-  dma_display->setCursor(1, 1);
-  dma_display->print("RESEAU");
-  if (gridAvailable) {
-    const bool exporting = gridNetExport >= 0;
-    scroll_text(12, frameDelay,
-      String(exporting ? "Injection " : "Achat ") + String(abs(gridNetExport)) + " W",
-      1, exporting ? myGREEN : myRED);
-  } else scroll_text(12, frameDelay, "Indisponible", 1, myORANGE);
+  String shownDetail = detail;
+  if (shownDetail.length() > 20) shownDetail = shownDetail.substring(0, 20);
+  if (available && shownDetail.length() > 0) {
+    dma_display->setTextSize(1);
+    dma_display->setTextColor(myGRAY);
+    dma_display->setCursor(max(3, (128 - (int)shownDetail.length() * 6) / 2), 23);
+    dma_display->print(shownDetail);
+  }
 
-  dma_display->clearScreen();
-  dma_display->setTextSize(1);
-  dma_display->setTextColor(myWHITE);
-  dma_display->setCursor(1, 1);
-  dma_display->print("BATTERIE");
-  if (batteryAvailable) {
-    String batteryText = String(batterySoc) + "%";
-    if (batteryAcAvailable) {
-      batteryText += "  +" + String(batteryAcDischarge) + " -" + String(batteryAcCharge) + "W";
-    }
-    scroll_text(12, frameDelay, batteryText, 1, myBLUE);
-  } else scroll_text(12, frameDelay, "Indisponible", 1, myORANGE);
+  dma_display->fillRect(0, 31, 128, 1, dma_display->color565(30, 34, 40));
+  dma_display->fillRect(0, 31, pageNumber * 25, 1, accent);
+
+  const uint32_t pageStarted = millis();
+  while (millis() - pageStarted < 2400) {
+    serviceOTA();
+    delay(20);
+  }
+}
+
+void printSolar() {
+  showInfoPage("PRODUCTION PV", String(power) + " W", "Instantanee",
+               myGREEN, 1, solarAvailable);
+  showInfoPage("MAISON + CE", String(conso) + " W", "Estimation",
+               myRED, 2, houseAvailable);
+
+  String heaterModeLabel = "AUTO";
+  uint16_t heaterColor = myGREEN;
+  if (waterHeaterMode == "forced") {
+    heaterModeLabel = "MARCHE FORCEE";
+    heaterColor = myORANGE;
+  } else if (waterHeaterMode == "stopped") {
+    heaterModeLabel = "ARRET";
+    heaterColor = myGRAY;
+  } else if (waterHeaterMode == "unavailable") {
+    heaterModeLabel = "MODE INCONNU";
+    heaterColor = myORANGE;
+  }
+  showInfoPage("CHAUFFE-EAU", String(waterHeaterPower) + " W", heaterModeLabel,
+               heaterColor, 3, waterHeaterAvailable);
+
+  const bool exporting = gridNetExport >= 0;
+  const String gridValue = String(exporting ? "INJ " : "ACH ") + String(abs(gridNetExport)) + " W";
+  showInfoPage("RESEAU", gridValue,
+               exporting ? "Vers reseau" : "Depuis reseau",
+               exporting ? myGREEN : myRED, 4, gridAvailable);
+
+  String batteryDetail = "";
+  if (batteryAcAvailable) {
+    batteryDetail = "AC +" + String(batteryAcDischarge) + "/-" +
+                    String(batteryAcCharge) + " W";
+  }
+  showInfoPage("BATTERIE", String(batterySoc) + " %", batteryDetail,
+               myBLUE, 5, batteryAvailable);
 }
